@@ -1,0 +1,71 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  Admin
+  Vendedor
+}
+
+enum MedicationCategory {
+  Analgesico
+  Antibiotico
+  Antiinflamatorio
+  Antihipertensivo
+  Antidiabetico
+  Vitamina
+  Antihistaminico
+  Antiacido
+  Antidepresivo
+  Otro
+}
+
+model User {
+  id          String    @id @default(uuid())
+  entraId     String    @unique
+  email       String    @unique
+  displayName String
+  role        UserRole  @default(Vendedor)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  sales       Sale[]
+}
+
+model Medication {
+  id          String              @id @default(uuid())
+  name        String
+  sku         String              @unique
+  category    MedicationCategory
+  description String?
+  price       Decimal             @db.Decimal(10, 2)
+  stock       Int                 @default(0)
+  expiryDate  DateTime
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  saleItems   SaleItem[]
+}
+
+model Sale {
+  id        String     @id @default(uuid())
+  userId    String
+  user      User       @relation(fields: [userId], references: [id])
+  total     Decimal    @db.Decimal(10, 2)
+  createdAt DateTime   @default(now())
+  items     SaleItem[]
+}
+
+model SaleItem {
+  id           String     @id @default(uuid())
+  saleId       String
+  sale         Sale       @relation(fields: [saleId], references: [id])
+  medicationId String
+  medication   Medication @relation(fields: [medicationId], references: [id])
+  quantity     Int
+  unitPrice    Decimal    @db.Decimal(10, 2)
+  subtotal     Decimal    @db.Decimal(10, 2)
+}
