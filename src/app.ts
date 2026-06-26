@@ -12,6 +12,24 @@ import dashboardRoutes from './modules/dashboard/routes';
 import './middlewares/auth';
 
 const app = express();
+app.disable('x-powered-by');
+
+// const allowedOrigins = env.CORS_ORIGIN.split(',').map((o) => o.trim());
+// app.use(
+//   cors({
+//     origin: (origin, callback) => {
+//       if (!origin || allowedOrigins.includes(origin)) {
+//         callback(null, true);
+//       } else {
+//         callback(new Error('CORS: origin not allowed'));
+//       }
+//     },
+//     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+//     allowedHeaders: ['Authorization', 'Content-Type', 'x-correlation-id'],
+//     exposedHeaders: ['x-correlation-id'],
+//     credentials: true,
+//   }),
+// );
 
 app.use(express.json());
 app.use(correlationId);
