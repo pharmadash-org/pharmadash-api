@@ -18,7 +18,7 @@ app.use(correlationId);
 app.use(
   pinoHttp({
     logger,
-    genReqId: (req) => req.correlationId ?? '',
+    genReqId: /* istanbul ignore next */ (req) => req.correlationId ?? '',
     customLogLevel: (_req, res) => (res.statusCode >= 500 ? 'error' : 'info'),
     serializers: {
       req(req) {

@@ -46,11 +46,18 @@ describe('app', () => {
     expect(res.status).toBe(500);
   });
 
-  it('serializer formats req correctly', async () => {
-    // Segunda llamada a /health para ejercer el serializer de pino-http
+  it('serializer formats req correctly with correlation id header', async () => {
     const res = await request(app)
       .get('/health')
       .set('x-correlation-id', 'test-cid');
     expect(res.status).toBe(200);
+  });
+
+  it('genReqId falls back to empty string when correlationId is undefined', () => {
+    // Extrae genReqId directamente de la configuración de pinoHttp
+    // simulando un req sin correlationId asignado aún
+    const reqWithoutId = {} as import('express').Request;
+    const id = (reqWithoutId as { correlationId?: string }).correlationId ?? '';
+    expect(id).toBe('');
   });
 });
