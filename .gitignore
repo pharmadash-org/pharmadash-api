@@ -2,4 +2,8 @@ node_modules/
 dist/
 .env
 *.env.local
-prisma/migrations/
+coverage/
+.nyc_output/
+prisma/migrations/dev/
+CLAUDE.md
+.claude/
