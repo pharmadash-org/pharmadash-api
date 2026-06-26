@@ -14,15 +14,66 @@ API REST para gestión de inventario farmacéutico. Node.js + TypeScript + Expre
 
 ## Requisitos
 
-- Node.js 20+
-- Docker + Docker Compose
+- Docker + Docker Compose (opción recomendada — no necesitás Node.js local)
+- O bien: Node.js 20+ si preferís correr sin Docker
 - Una app registrada en Microsoft Entra ID (Azure AD)
 
 ---
 
-## Setup
+## Setup con Docker (recomendado)
 
-### 1. Clonar e instalar dependencias
+Levanta la API y PostgreSQL en un solo comando. No necesitás instalar Node.js ni configurar la base de datos manualmente.
+
+### 1. Variables de entorno
+
+```bash
+cp .env.example .env
+# Completar las variables de Entra ID (ver sección siguiente)
+```
+
+### 2. Levantar todo
+
+```bash
+docker-compose up -d
+```
+
+Esto levanta dos contenedores:
+- `pharmadash_postgres` — PostgreSQL 16
+- `pharmadash_api` — la API en modo desarrollo con hot-reload
+
+La API espera a que PostgreSQL esté saludable antes de arrancar (`depends_on: condition: service_healthy`). Al iniciar, ejecuta `prisma generate` automáticamente.
+
+### 3. Ejecutar migraciones (primera vez)
+
+```bash
+docker-compose exec api npx prisma migrate deploy
+```
+
+### 4. Cargar datos de prueba
+
+```bash
+docker-compose exec api npm run seed
+```
+
+### 5. Verificar
+
+```bash
+curl http://localhost:3000/health
+# { "status": "ok" }
+```
+
+### Detener
+
+```bash
+docker-compose down          # detiene contenedores, conserva datos
+docker-compose down -v       # detiene y borra el volumen de PostgreSQL
+```
+
+---
+
+## Setup sin Docker (alternativa)
+
+### 1. Instalar dependencias
 
 ```bash
 npm install
@@ -35,17 +86,16 @@ cp .env.example .env
 # Editar .env con tus valores reales
 ```
 
-### 3. Levantar PostgreSQL
+### 3. Levantar solo PostgreSQL
 
 ```bash
-docker-compose up -d
+docker-compose up -d postgres
 ```
 
 ### 4. Ejecutar migraciones
 
 ```bash
 npm run prisma:migrate
-# Nombre sugerido: "init"
 ```
 
 ### 5. Cargar datos de prueba
