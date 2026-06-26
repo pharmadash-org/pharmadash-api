@@ -8,6 +8,7 @@ const prisma = new PrismaClient({
   ],
 });
 
+/* istanbul ignore next */
 prisma.$on('error', (e) => {
   logger.error({ err: e }, 'Prisma error');
 });
