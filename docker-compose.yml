@@ -1,6 +1,28 @@
 version: '3.9'
 
 services:
+  api:
+    build:
+      context: .
+      target: development
+    container_name: pharmadash_api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PORT: '3000'
+      DATABASE_URL: postgresql://pharmadash:pharmadash_pass@postgres:5432/pharmadash_db
+    ports:
+      - '3000:3000'
+    volumes:
+      - ./src:/app/src
+      - ./prisma:/app/prisma
+      - ./tsconfig.json:/app/tsconfig.json
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: sh -c "npm run prisma:generate && npm run dev"
+
   postgres:
     image: postgres:16-alpine
     container_name: pharmadash_postgres
