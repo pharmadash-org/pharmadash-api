@@ -183,4 +183,74 @@ npm run prisma:generate  # Regenerar cliente Prisma
 npm run prisma:migrate   # Nueva migración
 npm run prisma:studio    # GUI de base de datos
 npm run seed             # 20 medicamentos de ejemplo
+npm test                 # Tests unitarios
+npm run test:coverage    # Tests + reporte de cobertura
 ```
+
+---
+
+## Tests y cobertura
+
+```bash
+npm test                 # Ejecuta los tests unitarios
+npm run test:coverage    # Genera el reporte de cobertura (carpeta coverage/)
+```
+
+La cobertura global se mantiene por encima del **80%** (umbral exigido por `coverageThreshold` en `jest.config.js`; si baja, el comando falla). Se cubren servicios, repositorios, controladores, schemas Zod, middlewares y utilidades compartidas.
+
+El análisis de calidad corre automáticamente en **SonarCloud** vía GitHub Actions (`.github/workflows/ci.yml`) en cada push y pull request.
+
+---
+
+## Control de stock y concurrencia (race conditions)
+
+El stock es un recurso compartido. Si dos ventas del mismo medicamento llegan a la vez, un patrón ingenuo de *leer-luego-escribir* puede vender más unidades de las que existen (stock negativo):
+
+```
+Vendedor A lee stock=1 ─┐
+Vendedor B lee stock=1 ─┤  ambos ven "disponible"
+Vendedor A vende ───────┤  stock=0
+Vendedor B vende ───────┘  stock=-1  ❌
+```
+
+### Cómo se resuelve
+
+El descuento de stock se hace con un **UPDATE atómico y condicional** dentro de una transacción (`src/modules/sales/repository.ts`):
+
+```sql
+UPDATE medications
+SET stock = stock - $cantidad
+WHERE id = $id AND stock >= $cantidad
+```
+
+En Prisma se implementa con `updateMany`, que compila a ese UPDATE. La condición `stock >= cantidad` se evalúa bajo el **lock de fila** que toma el propio UPDATE, así que dos ventas concurrentes nunca pasan la comprobación a la vez. Si `count === 0`, no había stock suficiente → se lanza `422 Unprocessable Entity` y la transacción hace rollback (no se vende nada parcial).
+
+### Cómo probarlo manualmente
+
+Con el servidor corriendo (`npm run dev`) y un medicamento con **stock = 1**, lanza dos ventas simultáneas:
+
+```bash
+export TOKEN="<access_token con rol Admin o Vendedor>"
+export MED="<id del medicamento con stock 1>"
+export URL="http://localhost:3000/api/v1/sales"
+
+curl -s -o /dev/null -w "venta A: %{http_code}\n" -X POST "$URL" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d "{\"items\":[{\"medicationId\":\"$MED\",\"quantity\":1}]}" &
+curl -s -o /dev/null -w "venta B: %{http_code}\n" -X POST "$URL" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d "{\"items\":[{\"medicationId\":\"$MED\",\"quantity\":1}]}" &
+wait
+```
+
+**Resultado esperado:** una venta responde `201` y la otra `422`. El stock final queda en `0`, nunca en `-1`.
+
+> El token debe llevar el claim `roles` (`Admin` o `Vendedor`). Los tokens de `client_credentials` no lo incluyen salvo que el App Role permita miembros de tipo *Application*; usa un token de usuario (flujo interactivo / frontend) para esta prueba.
+
+### Prevención de escasez
+
+Además del control de carrera, el backend expone alertas tempranas para reabastecer antes de llegar a cero:
+
+- `isCriticalStock: true` cuando `stock < 10`
+- `isNearExpiry: true` cuando vence en ≤ 30 días
+- El dashboard agrega estos como `criticalStockCount` y `nearExpiryCount`
