@@ -1,5 +1,6 @@
 import { Sale, SaleItem, Prisma } from '@prisma/client';
 import { prisma } from '../../config/database';
+import { UnprocessableException } from '../../shared/exceptions';
 
 export type SaleWithItems = Sale & { items: (SaleItem & { medication: { name: string } })[] };
 
@@ -10,23 +11,23 @@ export class SaleRepository {
     total: number,
   ): Promise<SaleWithItems> {
     return prisma.$transaction(async (tx) => {
-      // Lock medications for update and verify stock
+      // Atomic conditional decrement — race-safe.
+      // updateMany compiles to: UPDATE medications SET stock = stock - q
+      //   WHERE id = ? AND stock >= q
+      // The WHERE clause is evaluated under the row lock taken by UPDATE,
+      // so two concurrent sales can never both pass the check.
+      // count === 0 means the row didn't exist or stock was insufficient.
       for (const item of items) {
-        const med = await tx.medication.findUnique({ where: { id: item.medicationId } });
-        if (!med) throw new Error(`Medication ${item.medicationId} not found`);
-        if (med.stock < item.quantity) {
-          throw new Error(
-            `Insufficient stock for '${med.name}': available ${med.stock}, requested ${item.quantity}`,
-          );
-        }
-      }
-
-      // Deduct stock
-      for (const item of items) {
-        await tx.medication.update({
-          where: { id: item.medicationId },
+        const { count } = await tx.medication.updateMany({
+          where: { id: item.medicationId, stock: { gte: item.quantity } },
           data: { stock: { decrement: item.quantity } },
         });
+        if (count === 0) {
+          throw new UnprocessableException(
+            `Insufficient stock for medication '${item.medicationId}'`,
+            { medicationId: item.medicationId, requested: item.quantity },
+          );
+        }
       }
 
       // Create sale

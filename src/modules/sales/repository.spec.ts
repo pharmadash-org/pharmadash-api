@@ -1,6 +1,6 @@
 jest.mock('../../config/database', () => {
   const tx = {
-    medication: { findUnique: jest.fn(), update: jest.fn() },
+    medication: { updateMany: jest.fn() },
     sale: { create: jest.fn() },
   };
   return {
@@ -16,7 +16,7 @@ import { SaleRepository } from './repository';
 
 const mp = prisma as unknown as {
   __tx: {
-    medication: { findUnique: jest.Mock; update: jest.Mock };
+    medication: { updateMany: jest.Mock };
     sale: { create: jest.Mock };
   };
   $transaction: jest.Mock;
@@ -26,28 +26,21 @@ describe('SaleRepository.createWithItems', () => {
   const repo = new SaleRepository();
   const items = [{ medicationId: 'm1', quantity: 2, unitPrice: 10, subtotal: 20 }];
 
-  it('throws when medication is missing inside the transaction', async () => {
-    mp.__tx.medication.findUnique.mockResolvedValue(null);
-    await expect(repo.createWithItems('u1', items, 20)).rejects.toThrow(/not found/);
-    expect(mp.__tx.sale.create).not.toHaveBeenCalled();
-  });
-
-  it('throws and skips persistence when stock is insufficient', async () => {
-    mp.__tx.medication.findUnique.mockResolvedValue({ id: 'm1', name: 'A', stock: 1 });
+  it('throws 422 and skips persistence when the atomic decrement affects 0 rows', async () => {
+    // count === 0 = no existía o no había stock suficiente (también cubre la carrera)
+    mp.__tx.medication.updateMany.mockResolvedValue({ count: 0 });
     await expect(repo.createWithItems('u1', items, 20)).rejects.toThrow(/Insufficient stock/);
-    expect(mp.__tx.medication.update).not.toHaveBeenCalled();
     expect(mp.__tx.sale.create).not.toHaveBeenCalled();
   });
 
-  it('decrements stock and creates the sale on success', async () => {
-    mp.__tx.medication.findUnique.mockResolvedValue({ id: 'm1', name: 'A', stock: 100 });
-    mp.__tx.medication.update.mockResolvedValue({});
+  it('decrements stock atomically and creates the sale on success', async () => {
+    mp.__tx.medication.updateMany.mockResolvedValue({ count: 1 });
     mp.__tx.sale.create.mockResolvedValue({ id: 'sale-1', items: [] });
 
     const result = await repo.createWithItems('u1', items, 20);
 
-    expect(mp.__tx.medication.update).toHaveBeenCalledWith({
-      where: { id: 'm1' },
+    expect(mp.__tx.medication.updateMany).toHaveBeenCalledWith({
+      where: { id: 'm1', stock: { gte: 2 } },
       data: { stock: { decrement: 2 } },
     });
     expect(mp.__tx.sale.create).toHaveBeenCalled();
