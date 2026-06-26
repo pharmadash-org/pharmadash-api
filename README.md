@@ -254,3 +254,51 @@ Además del control de carrera, el backend expone alertas tempranas para reabast
 - `isCriticalStock: true` cuando `stock < 10`
 - `isNearExpiry: true` cuando vence en ≤ 30 días
 - El dashboard agrega estos como `criticalStockCount` y `nearExpiryCount`
+
+---
+
+## Arquitectura
+
+El proyecto adopta los principios de **Arquitectura Hexagonal (Ports & Adapters)**, adaptados a la escala de una API REST con tres módulos de negocio.
+
+### Concepto central
+
+La regla de oro: **el núcleo de negocio no depende de ningún framework, base de datos ni protocolo HTTP**. Las capas externas (Express, Prisma, Passport) se conectan al núcleo a través de contratos (interfaces), no al revés.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    ADAPTADORES DE ENTRADA               │
+│         routes.ts  →  controller.ts  →  middlewares/    │
+│              (Express, HTTP, validación Zod)            │
+└──────────────────────────┬──────────────────────────────┘
+                           │ llama a
+┌──────────────────────────▼──────────────────────────────┐
+│                     NÚCLEO DE DOMINIO                   │
+│                       service.ts                        │
+│   - Reglas de negocio (stock crítico, vencimiento)      │
+│   - Orquestación de casos de uso                        │
+│   - Solo conoce excepciones propias (shared/exceptions) │
+│   - NO importa Prisma, Express ni Passport              │
+└──────────────────────────┬──────────────────────────────┘
+                           │ usa el contrato (puerto)
+┌──────────────────────────▼──────────────────────────────┐
+│                   ADAPTADORES DE SALIDA                 │
+│                      repository.ts                      │
+│          (Prisma ORM → PostgreSQL)                      │
+│   auth.ts → Passport + Entra ID                        │
+│   config/ → variables de entorno, logger               │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Capas en la práctica
+
+| Capa | Archivos | Responsabilidad |
+|------|----------|-----------------|
+| **Adaptador entrada (HTTP)** | `routes.ts`, `controller.ts`, `middlewares/` | Recibir HTTP, validar con Zod, devolver respuesta estándar |
+| **Núcleo / Casos de uso** | `service.ts` | Lógica de negocio pura: umbrales, unicidad de SKU, enriquecimiento de datos |
+| **Puerto de salida (contrato)** | Tipos del `repository.ts` | Define qué operaciones necesita el dominio sin saber cómo se implementan |
+| **Adaptador salida (persistencia)** | `repository.ts` con Prisma | Implementa el puerto traduciendo a SQL vía Prisma |
+| **Adaptador salida (identidad)** | `middlewares/auth.ts` | Valida tokens Entra ID, sincroniza usuarios en BD |
+| **Infraestructura transversal** | `shared/`, `config/` | Excepciones tipadas, respuesta estándar, logger, env |
+
+.
