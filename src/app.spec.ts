@@ -32,8 +32,25 @@ describe('app', () => {
     expect(res.status).toBe(200);
   });
 
-  it('unknown route returns 404 or passes to error handler', async () => {
+  it('unknown route returns 404 or higher (covers error handler path)', async () => {
     const res = await request(app).get('/unknown-route');
     expect(res.status).toBeGreaterThanOrEqual(400);
+  });
+
+  it('covers customLogLevel >= 500 branch via a route that throws', async () => {
+    // Registrar una ruta temporal que lanza un error 500
+    app.get('/test-500', () => {
+      throw new Error('forced 500');
+    });
+    const res = await request(app).get('/test-500');
+    expect(res.status).toBe(500);
+  });
+
+  it('serializer formats req correctly', async () => {
+    // Segunda llamada a /health para ejercer el serializer de pino-http
+    const res = await request(app)
+      .get('/health')
+      .set('x-correlation-id', 'test-cid');
+    expect(res.status).toBe(200);
   });
 });

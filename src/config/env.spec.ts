@@ -1,5 +1,3 @@
-// env.ts runs at import time; the module is already loaded via setup-env.ts
-// so we just verify the exported object has the expected shape.
 import { env } from './env';
 
 describe('env config', () => {
